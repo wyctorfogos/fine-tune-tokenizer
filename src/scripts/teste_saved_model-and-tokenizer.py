@@ -1,59 +1,78 @@
 import os
-from sentence_transformers import SentenceTransformer, models
+import json
 from transformers import AutoTokenizer
-import torch
+from sentence_transformers.models import Transformer, Pooling
+from sentence_transformers import SentenceTransformer
 
-if __name__ == "__main__":
-    # --- 1. Definição dos Caminhos ---
-    # O nome do modelo BERT que foi a base de tudo
-    base_model_name = "bert-base-multilingual-cased"
-    
-    # O diretório onde você salvou o tokenizer expandido (com vocab.txt, etc.)
-    expanded_tokenizer_path = "./results/tokenizer_merged"
-    
-    print(f"Carregando encoder a partir do modelo base '{base_model_name}' e tokenizer de '{expanded_tokenizer_path}'...")
+def carregar_tokens_customizados(json_path):
+    with open(json_path, "r", encoding="utf-8") as f:
+        tokenizer_data = json.load(f)
+    vocab_dict = tokenizer_data.get("model", {}).get("vocab", {})
+    return list(vocab_dict.keys())
 
-    # --- 2. Recriação do Encoder ---
-    
-    # Passo A: Carregar a camada Transformer, especificando o modelo base e o nosso tokenizer customizado.
-    # O SentenceTransformer carregará os pesos do `base_model_name` e as regras de tokenização do `expanded_tokenizer_path`.
-    word_embedding_model = models.Transformer(
-        model_name_or_path=base_model_name,
-        tokenizer_name_or_path=expanded_tokenizer_path
+def expandir_tokenizer(model_name, custom_tokens, output_path):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # Remove tokens especiais padrão
+    special_tokens = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+    novos_tokens = [t for t in custom_tokens if t not in special_tokens]
+
+    adicionados = tokenizer.add_tokens(novos_tokens)
+    print(f"✅ {adicionados} tokens adicionados ao tokenizer.")
+
+    tokenizer.save_pretrained(output_path)
+    print(f"📦 Tokenizer salvo em: {output_path}")
+    return tokenizer
+
+def construir_sentence_encoder(model_name, tokenizer_path, tokenizer):
+    word_embedding_model = Transformer(
+        model_name_or_path=model_name,
+        tokenizer_name_or_path=tokenizer_path
     )
 
-    # Passo B: Redimensionar a camada de embeddings para compatibilidade.
-    # Este passo é crucial para alinhar o modelo (com seu vocabulário original) ao tokenizer (com o vocabulário expandido).
-    # Precisamos carregar o tokenizer para saber seu novo tamanho.
-    tokenizer = AutoTokenizer.from_pretrained(expanded_tokenizer_path)
     word_embedding_model.auto_model.resize_token_embeddings(len(tokenizer))
-    
-    # Passo C: Criar a camada de Pooling para gerar um embedding de frase único.
-    pooling_model = models.Pooling(word_embedding_model.get_word_embedding_dimension())
-    
-    # Passo D: Montar o objeto SentenceTransformer (o nosso "encoder" final).
-    encoder = SentenceTransformer(modules=[word_embedding_model, pooling_model])
-    
-    print("\n✅ Encoder carregado com sucesso!")
-    print(f"   Rodando no dispositivo: {encoder.device}")
+    pooling_model = Pooling(word_embedding_model.get_word_embedding_dimension())
 
-    # --- 3. Teste do Encoder ---
-    print("\n--- Testando o encoder com frases de exemplo ---")
-    
-    frases_para_testar = [
-        "A violência_doméstica é um crime grave.",
-        "O tribunal de justiça TJES publicou o edital.",
-        "A agricultura na zona_rural foi afetada pela seca.",
-        "Um texto normal sem tokens customizados.",
-        "violência_doméstica zona_rural TJES" # Apenas os tokens
+    encoder = SentenceTransformer(modules=[word_embedding_model, pooling_model])
+    print("✅ SentenceTransformer criado com sucesso.")
+    return encoder
+
+if __name__ == "__main__":
+    # --- Parâmetros ---
+    base_model_name = "alfaneo/jurisbert-base-portuguese-uncased"
+    tokenizer_custom_path = "./results/tokenizer_custom.json"
+    tokenizer_output_path = f"./results/tokenizer_merged_{base_model_name.replace('/', '_')}"
+    encoder_output_path = f"./results/encoder_custom_{base_model_name.replace('/', '_')}"
+
+    # --- Execução ---
+    print("🔍 Lendo tokens customizados...")
+    custom_tokens = carregar_tokens_customizados(tokenizer_custom_path)
+
+    print("🛠️ Expandindo tokenizer base...")
+    tokenizer = expandir_tokenizer(base_model_name, custom_tokens, tokenizer_output_path)
+
+    print("🏗️ Construindo encoder...")
+    encoder = construir_sentence_encoder(base_model_name, tokenizer_output_path, tokenizer)
+
+    print("💾 Salvando modelo completo...")
+    encoder.save(encoder_output_path)
+    print(f"\n✅ Modelo completo salvo em: {encoder_output_path}")
+
+    # --- Teste opcional ---
+    frases_teste = [
+        "A violência_doméstica ocorre na zona_rural. Tribunal TJES decidiu.",
+        "Um exemplo sem tokens especiais.",
+        "TJES violência_doméstica zona_rural"
     ]
-    
-    # O método .encode() é otimizado para processar listas de frases.
-    embeddings = encoder.encode(frases_para_testar, show_progress_bar=True)
-    
-    # --- 4. Análise dos Resultados ---
-    for frase, embedding in zip(frases_para_testar, embeddings):
-        print(f"\nFrase: '{frase}'")
-        # Mostrando apenas os 5 primeiros valores do vetor para não poluir a tela.
-        print(f"   Vetor de Embedding (primeiros 5 valores): {embedding[:10]}")
-        print(f"   Dimensão do Vetor: {embedding.shape}")
+
+    print("\n🔍 Tokens das frases de teste:")
+    for frase in frases_teste:
+        tokens = tokenizer.tokenize(frase)
+        print(f"\nFrase: {frase}")
+        print(f"Tokens: {tokens}")
+
+    print("\n📈 Testando embeddings...")
+    embeddings = encoder.encode(frases_teste, normalize_embeddings=True)
+    for frase, embedding in zip(frases_teste, embeddings):
+        print(f"\nFrase: {frase}")
+        print(f"Embedding (dim={embedding.shape[0]}): {embedding[:10]}...")  # só os 10 primeiros

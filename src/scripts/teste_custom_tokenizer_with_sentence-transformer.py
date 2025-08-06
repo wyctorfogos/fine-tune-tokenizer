@@ -9,6 +9,9 @@ if __name__=="__main__":
     model_name = "alfaneo/jurisbert-base-portuguese-uncased"
     custom_tokenizer_path = "./results/tokenizer_custom.json"
     output_path = "./results/tokenizer_merged"
+    base_model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    # O diretório onde você salvou o tokenizer expandido (com vocab.txt, etc.)
+    output_path = f"./results/tokenizer_merged_{base_model_name}"
 
     # 1. Carrega vocabulário do tokenizer_custom.json
     with open(custom_tokenizer_path, "r", encoding="utf-8") as f:
