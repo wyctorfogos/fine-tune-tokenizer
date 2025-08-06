@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModel
 
 # Caminhos
-model_name_or_path = "bert-base-multilingual-cased"
+model_name_or_path = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" # "bert-base-multilingual-cased" # "all-MiniLM-L6-v2" # "paraphrase-multilingual-MiniLM-L12-v2"
 tokenizer_path = "./results/tokenizer_merged"
 output_path = "./results/fine_tuned_model"
 

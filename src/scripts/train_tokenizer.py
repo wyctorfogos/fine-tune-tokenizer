@@ -20,8 +20,27 @@ if __name__ == "__main__":
 
     # Criação do tokenizer WordLevel
     tokenizer = Tokenizer(models.WordLevel(vocab_dict, unk_token="[UNK]"))
-    tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+
+    tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+        pre_tokenizers.WhitespaceSplit(), # Primeiro, divide por espaços
+        pre_tokenizers.Punctuation()      # Depois, separa a pontuação de cada palavra
+    ])
 
     # Salvando o tokenizer
     tokenizer.save(os.path.join(base_folder_path, "tokenizer_custom.json"))
     print("Tokenizer treinado e salvo com sucesso!")
+
+    del tokenizer
+    
+    # Carregar o tokenizer a partir do arquivo salvo
+    tokenizer = Tokenizer.from_file("./results/tokenizer_custom.json")
+
+    # Exemplo de uso
+    texto = "um [MASK] para governar todos"
+    output = tokenizer.encode(texto)
+
+    print(f"IDs dos Tokens: {output.ids}")
+    # Exemplo de saída: [ID_de_um, ID_de_[MASK], ID_de_para, ID_de_governar, ID_de_todos]
+
+    print(f"Tokens: {output.tokens}")
+    # Exemplo de saída: ['um', '[MASK]', 'para', 'governar', 'todos']

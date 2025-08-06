@@ -1,10 +1,12 @@
 import os
 import json
 from transformers import AutoTokenizer
+from sentence_transformers.models import Transformer, Pooling
+from sentence_transformers import SentenceTransformer
 
 if __name__=="__main__":
     # Caminhos
-    model_name = "bert-base-multilingual-cased"
+    model_name = "alfaneo/jurisbert-base-portuguese-uncased"
     custom_tokenizer_path = "./results/tokenizer_custom.json"
     output_path = "./results/tokenizer_merged"
 
@@ -28,9 +30,6 @@ if __name__=="__main__":
     # 4. Salva o novo tokenizer
     tokenizer.save_pretrained(output_path)
     print(f"Tokenizer expandido salvo em '{output_path}'.")
-
-    from sentence_transformers.models import Transformer, Pooling
-    from sentence_transformers import SentenceTransformer
 
     word_embedding_model = Transformer(
         model_name_or_path=model_name,
