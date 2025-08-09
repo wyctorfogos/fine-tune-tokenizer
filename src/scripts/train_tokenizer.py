@@ -5,9 +5,9 @@ from utils.load_dataset import load_data
 
 if __name__ == "__main__":
     base_folder_path = "./results"
-    DATA_PATH = os.path.join(base_folder_path, "gotten_tokens.csv")
+    DATA_PATH = os.path.join(base_folder_path, "gotten_tokens_filtrado.csv")
     print(f"Carregando dataset de '{DATA_PATH}'...")
-    dataset = load_data(DATA_PATH)
+    dataset = load_data(DATA_PATH, separator=",")
 
     # Extração de tokens únicos
     tokens_unicos = sorted(dataset['token'].dropna().unique())
@@ -22,8 +22,7 @@ if __name__ == "__main__":
     tokenizer = Tokenizer(models.WordLevel(vocab_dict, unk_token="[UNK]"))
 
     tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
-        pre_tokenizers.WhitespaceSplit(), # Primeiro, divide por espaços
-        pre_tokenizers.Punctuation()      # Depois, separa a pontuação de cada palavra
+        pre_tokenizers.WhitespaceSplit()
     ])
 
     # Salvando o tokenizer
