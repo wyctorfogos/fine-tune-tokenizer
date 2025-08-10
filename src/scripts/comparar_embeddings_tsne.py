@@ -10,8 +10,8 @@ from utils.load_dataset import load_data
 # =========================
 # Caminhos
 # =========================
-encoder_original_path = "sentence-transformers/all-MiniLM-L6-v2" # "neuralmind/bert-base-portuguese-cased" # "alfaneo/jurisbert-base-portuguese-uncased"
-encoder_expanded_path = "./results/encoder_custom_sentence-transformers_all-MiniLM-L6-v2" # "./results/encoder_custom_alfaneo_jurisbert-base-portuguese-uncased"
+encoder_original_path = "neuralmind/bert-base-portuguese-cased" # "alfaneo/jurisbert-base-portuguese-uncased"
+encoder_expanded_path = "./results/encoder_custom_neuralmind_bert-base-portuguese-cased" # "./results/finetuned-custom_neuralmind_bert-base-portuguese-cased" # "./results/encoder_custom_sentence-transformers_all-MiniLM-L6-v2" # "./results/encoder_custom_alfaneo_jurisbert-base-portuguese-uncased"
 
 # =========================
 # Carregar encoders
@@ -123,4 +123,5 @@ plt.title("t-SNE: Original vs Expandido (cores por categoria)", fontsize=14)
 plt.grid(True, alpha=0.3)
 plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 plt.tight_layout()
-plt.show()
+# plt.show()
+plt.savefig("./results/comparacao_original_vs_custom_model-just-add-tokens.png", dpi=400)
