@@ -60,7 +60,7 @@ def comparar_embeddings(encoder_original, encoder_expandido, frases):
 
 if __name__ == "__main__":
     # --- Parâmetros ---
-    base_model_name = "neuralmind/bert-base-portuguese-cased"
+    base_model_name = "sentence-transformers/all-MiniLM-L6-v2" # "neuralmind/bert-base-portuguese-cased"
     tokenizer_custom_path = "./results/tokenizer_custom.json"
     tokenizer_output_path = f"./results/tokenizer_merged_{base_model_name.replace('/', '_')}"
     encoder_output_path = f"./results/encoder_custom_{base_model_name.replace('/', '_')}"

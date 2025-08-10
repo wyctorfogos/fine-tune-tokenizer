@@ -1,4 +1,5 @@
 import numpy as np
+from imblearn.under_sampling import RandomUnderSampler, NearMiss
 import pandas as pd
 import re
 import matplotlib.pyplot as plt
@@ -9,8 +10,8 @@ from utils.load_dataset import load_data
 # =========================
 # Caminhos
 # =========================
-encoder_original_path = "neuralmind/bert-base-portuguese-cased" # "alfaneo/jurisbert-base-portuguese-uncased"
-encoder_expanded_path = "./results/encoder_custom_neuralmind_bert-base-portuguese-cased" # "./results/encoder_custom_alfaneo_jurisbert-base-portuguese-uncased"
+encoder_original_path = "sentence-transformers/all-MiniLM-L6-v2" # "neuralmind/bert-base-portuguese-cased" # "alfaneo/jurisbert-base-portuguese-uncased"
+encoder_expanded_path = "./results/encoder_custom_sentence-transformers_all-MiniLM-L6-v2" # "./results/encoder_custom_alfaneo_jurisbert-base-portuguese-uncased"
 
 # =========================
 # Carregar encoders
@@ -29,19 +30,39 @@ dataset = load_data(
     separator=","
 )
 
+# Supondo que 'frases_dict' é o seu DataFrame
+X = dataset['generated_sentence']
+y = dataset['categoria']
+
+# Instanciar o RandomUnderSampler
+rus = RandomUnderSampler(random_state=42)
+
+# Resampling
+X_resampled, y_resampled = rus.fit_resample(X.to_frame(), y)
+
+# Criar um novo DataFrame com os dados reequilibrados para análise
 frases_dict = pd.DataFrame({
-    "generated_text": dataset["generated_sentence"],
-    "category": dataset["categoria"]
+    'generated_sentence': X_resampled['generated_sentence'],
+    'categoria': y_resampled
 })
+
+
+# Verificar a contagem de classes após o undersampling
+print("Distribuição das classes após o Undersampling:")
+print(frases_dict['categoria'].value_counts())
+
+## Carrega apenas 100 amostras do dataset
+#dataset = dataset.sample(n=250)
 
 # =========================
 # Pré-processamento
 # =========================
-frases = frases_dict["generated_text"].tolist()
-categorias = frases_dict["category"].tolist()
+frases = frases_dict["generated_sentence"].tolist()
+categorias = frases_dict["categoria"].tolist()
 
 # Remove números
 frases_sem_num = [re.sub(r"\d", "*", f) for f in frases]
+frases = frases_sem_num
 
 # =========================
 # Gerar embeddings reais
