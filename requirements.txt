@@ -697,3 +697,5 @@ yolov5==7.0.13
 youtube-dl==2021.12.17
 yt-dlp==2024.8.6
 zipp==3.17.0
+transformers==4.45.2 
+sentence-transformers==3.1.1
