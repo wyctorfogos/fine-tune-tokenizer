@@ -9,6 +9,7 @@ from nltk.corpus import stopwords
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from matplotlib.patches import Patch
 
 # Baixar as stopwords do NLTK (executar apenas uma vez se não tiver)
 try:
@@ -16,29 +17,66 @@ try:
 except LookupError:
     nltk.download('stopwords')
 
-
-def plot_clusters_2d(X, labels, embbeding_model_name, figure_name):
+def plot_clusters_2d(X, labels, categorias, embbeding_model_name, figure_name):
     """
-    Projeta os embeddings em 2D (PCA ou t-SNE) e plota os clusters
+    Projeta os embeddings em 2D (PCA -> t-SNE) e plota os clusters
+    comparando a clusterização com as categorias reais.
+    A legenda mostra 'C1', 'C2'... para clusters e nomes reais para categorias.
     """
     print("Gerando projeção 2D dos embeddings...")
 
-    # Primeiro reduz para 50D com PCA (mais rápido/estável para t-SNE)
-    X_pca = PCA(n_components=50, random_state=42).fit_transform(X)
-
-    # Depois projeta em 2D com t-SNE
+    # =========================
+    # Redução dimensional
+    # =========================
+    n_pca = min(50, X.shape[1])  
+    X_pca = PCA(n_components=n_pca, random_state=42).fit_transform(X)
     X_2d = TSNE(n_components=2, random_state=42, perplexity=30).fit_transform(X_pca)
 
-    plt.figure(figsize=(10, 7))
-    scatter = plt.scatter(X_2d[:, 0], X_2d[:, 1], c=labels, cmap="tab20", alpha=0.7, s=20)
-    plt.colorbar(scatter, label="Cluster")
-    plt.title("Visualização dos clusters (t-SNE 2D)")
+    # =========================
+    # Preparar categorias
+    # =========================
+    categorias = pd.Series(categorias)  # garante formato Series
+    categorias_encoded = categorias.astype("category").cat.codes
+    categorias_labels = dict(enumerate(categorias.astype("category").cat.categories))
 
+    # =========================
+    # Plotagem
+    # =========================
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # ---- Plot clusters (C1, C2...)
+    scatter1 = axes[0].scatter(X_2d[:, 0], X_2d[:, 1], c=labels,
+                               cmap="tab20", alpha=0.7, s=20)
+
+    # Legenda clusters
+    cluster_colors = scatter1.cmap(scatter1.norm(range(len(set(labels)))))
+    cluster_legend = [Patch(color=cluster_colors[i], label=f"C{i+1}") for i in range(len(set(labels)))]
+    axes[0].legend(handles=cluster_legend, title="Clusters", bbox_to_anchor=(1.05, 1), loc="upper left")
+    axes[0].set_title("Clusters (t-SNE 2D)")
+
+    # ---- Plot categorias reais (nomes)
+    scatter2 = axes[1].scatter(X_2d[:, 0], X_2d[:, 1], c=categorias_encoded,
+                               cmap="tab20", alpha=0.7, s=20)
+
+    # Legenda categorias
+    cat_colors = scatter2.cmap(scatter2.norm(range(len(categorias_labels))))
+    cat_legend = [Patch(color=cat_colors[i], label=nome) for i, nome in categorias_labels.items()]
+    axes[1].legend(handles=cat_legend, title="Categorias", bbox_to_anchor=(1.05, 1), loc="upper left")
+    axes[1].set_title("Categorias (t-SNE 2D)")
+
+    plt.tight_layout()
+
+    # =========================
+    # Salvamento da figura
+    # =========================
     os.makedirs("./results/kmeans", exist_ok=True)
     safe_model_name = str(embbeding_model_name).replace("/", "-")
-    plt.savefig(f"./results/kmeans/{figure_name}_clusters_plot-{safe_model_name}.png", dpi=400)
+    image_path = f"./results/kmeans/{figure_name}_clusters-e-categorias_plot-{safe_model_name}.png"
+
+    plt.savefig(image_path, dpi=300, bbox_inches="tight")
     plt.close()
 
+    print(f"Figura salva em: {image_path}")
 # ---------- Funções utilitárias ----------
 def save_data(file_folder_path: str = './results/kmeans/found_categories.csv',
               found_categories: list = [],
@@ -111,7 +149,6 @@ def find_optimal_k_alternatives(X, max_k: int = 15, embbeding_model_name: str = 
     return optimal_k_db
 
 
-# ---------- Função principal ----------
 def main(file_path: str,
          num_words_to_analyse: int = 10,
          num_frequent_sentences: int = 10,
@@ -133,42 +170,60 @@ def main(file_path: str,
     sentences = dataset[text_column].dropna().astype(str).tolist()
     print(f"Total de sentenças: {len(sentences)}")
 
-    # 2. Criar embeddings
-    print(f"Carregando modelo de embeddings: {embbeding_model_name} ...")
-    model = SentenceTransformer(embbeding_model_name)
-    X = model.encode(sentences, show_progress_bar=True)
+    # 2. Verificar se já existem embeddings salvos
+    os.makedirs("./results/kmeans", exist_ok=True)
+    emb_path = f"./results/kmeans/{figure_name}_embeddings.npy"
+    sent_path = f"./results/kmeans/{figure_name}_sentences.csv"
+
+    if os.path.exists(emb_path) and os.path.exists(sent_path):
+        print(f"Carregando embeddings salvos de {emb_path} ...")
+        X = np.load(emb_path)
+        sentences_df = pd.read_csv(sent_path)
+        if len(sentences_df) != len(sentences):
+            raise ValueError("O número de sentenças mudou. Recalcule os embeddings.")
+    else:
+        print(f"Gerando embeddings com modelo: {embbeding_model_name} ...")
+        model = SentenceTransformer(embbeding_model_name)
+        X = model.encode(sentences, show_progress_bar=True)
+
+        # salvar embeddings e sentenças
+        np.save(emb_path, X)
+        pd.DataFrame({"sentence": sentences}).to_csv(sent_path, index=False, encoding="utf-8")
+        print(f"Embeddings salvos em: {emb_path}")
+        print(f"Sentenças salvas em: {sent_path}")
 
     # 3. Encontrar número ótimo de clusters
     if select_num_clusters == "auto":
         num_clusters = find_optimal_k_alternatives(X, max_k=15, embbeding_model_name=embbeding_model_name)
 
     print(f"Treinando KMeans com k={num_clusters} ...")
+    
     kmeans_model = KMeans(n_clusters=num_clusters, init='k-means++', n_init=10, random_state=42)
     labels = kmeans_model.fit_predict(X)
-
-    # --- NOVO: gerar plot 2D dos clusters
-    plot_clusters_2d(X, labels, embbeding_model_name, figure_name)
-
-    # 4. Salvar resultados
     dataset["cluster"] = labels
+    dataset["cluster_name"] = ["C" + str(i+1) for i in labels]
+    # --- Plot 2D
+    if "categoria" in dataset.columns:
+        plot_clusters_2d(X, dataset["cluster"], dataset["categoria"], embbeding_model_name, figure_name)
+
+    # 4. Salvar resultados (sentenças + clusters + categorias)
     save_path = f"./results/kmeans/{figure_name}_results.csv"
-    save_data(file_folder_path=save_path,
-              found_categories=dataset,
-              embbeding_model_name=embbeding_model_name)
+    dataset.to_csv(save_path, index=False, encoding="utf-8")
     print(f"Resultados salvos em: {save_path}")
 
     return dataset
+
 
 
 # ---------- Execução ----------
 if __name__ == '__main__':
     llm_model_name = "gemma3:1b"
     input_file_folder_path = (
-        'processed_data_llm_gemma3:1b_analysis_multiclasses_only-user-description_using_new_clusters_names_with_dynamic-list-of-categories.csv'
+        "processed_data_llm_gemma3:1b_analysis_multiclasses_only-user-description_using_new_clusters_names.csv" #'processed_data_llm_gemma3:1b_analysis_multiclasses_only-user-description_using_new_clusters_names_with_dynamic-list-of-categories.csv'
     )
     text_column = "generated_sentence"
     num_clusters = 50
-    embbeding_model_name = "intfloat/multilingual-e5-base" # "neuralmind/bert-base-portuguese-cased"
+    embbeding_model_name = "neuralmind/bert-base-portuguese-cased"
 
     main(file_path=f'./results/{input_file_folder_path}',
          num_words_to_analyse=10,
