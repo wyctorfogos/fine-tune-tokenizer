@@ -168,7 +168,7 @@ if __name__ == '__main__':
     )
     text_column = "generated_sentence"
     num_clusters = 50
-    embbeding_model_name = "neuralmind/bert-base-portuguese-cased"
+    embbeding_model_name = "intfloat/multilingual-e5-base" # "neuralmind/bert-base-portuguese-cased"
 
     main(file_path=f'./results/{input_file_folder_path}',
          num_words_to_analyse=10,
