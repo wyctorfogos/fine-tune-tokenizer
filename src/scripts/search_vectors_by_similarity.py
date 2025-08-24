@@ -1,153 +1,154 @@
 import os
 import faiss
+import logging
+import json
 from sentence_transformers import SentenceTransformer
 import pandas as pd
 import numpy as np
-from typing import Union
+from typing import Union, List, Dict
+
+# Configuração do logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 class FAISS():
     """
-    Uma classe para gerenciar a indexação e busca no FAISS com embeddings de sentenças.
+    Classe para gerenciar a indexação e busca no FAISS com embeddings de sentenças.
+    Retorna os resultados no formato JSON.
     """
-    def __init__(self, filepath:str, column_name:str="descrição", sentence_embedding_model_name:str = "neuralmind/bert-base-portuguese-cased"):
+    def __init__(self, filepath: str, column_name: str = "descrição",
+                 sentence_embedding_model_name: str = "neuralmind/bert-base-portuguese-cased"):
         self.sentence_embedding_model_name = sentence_embedding_model_name
         self.embedding_model = SentenceTransformer(model_name_or_path=self.sentence_embedding_model_name)
         self.obj_faiss = None
         self.filepath = filepath
         self.column_name = column_name
-        # O dataset é carregado na inicialização e armazenado no atributo 'dataset'
         self.dataset = self._load_data()
     
     def _create_index(self, D: int) -> None:
         try:
-            self.obj_faiss = faiss.IndexFlatL2(D)
-            print(f"Índice FAISS criado com dimensão D={D}")
+            self.obj_faiss = faiss.IndexFlatIP(D)  # Inner Product (cosine similarity após normalização)
+            logging.info(f"Índice FAISS criado com dimensão D={D}")
         except Exception as e:
-            print(f"Erro ao criar o índice FAISS: {e}\n")
+            logging.error(f"Erro ao criar o índice FAISS: {e}")
 
     def _add_to_index(self, vectors: np.ndarray) -> None:
         try:
-            vectors_norm = np.ascontiguousarray(vectors, dtype=np.float32)
-            self.obj_faiss.add(vectors_norm)
-            print(f"Adicionados {self.obj_faiss.ntotal} vetores ao índice.")
+            vectors = np.ascontiguousarray(vectors, dtype=np.float32)
+            faiss.normalize_L2(vectors)
+            self.obj_faiss.add(vectors)
+            logging.info(f"{self.obj_faiss.ntotal} vetores adicionados ao índice.")
         except Exception as e:
-            print(f"Erro ao adicionar novos vetores: {e}")
+            logging.error(f"Erro ao adicionar vetores: {e}")
 
-    def _search_index(self, vector_to_search: np.ndarray, k:int=5) -> tuple:
+    def _search_index(self, vector_to_search: np.ndarray, k: int = 5) -> tuple:
         try:
-            query_vector_norm = np.ascontiguousarray(vector_to_search, dtype=np.float32)
-            distances, indices = self.obj_faiss.search(query_vector_norm, k=k)
+            query_vector = np.ascontiguousarray(vector_to_search, dtype=np.float32)
+            faiss.normalize_L2(query_vector)
+            distances, indices = self.obj_faiss.search(query_vector, k=k)
             return distances, indices
         except Exception as e:
-            print(f"Erro durante a busca: {e}")
+            logging.error(f"Erro durante a busca: {e}")
             return None, None
 
     def _load_data(self) -> Union[pd.DataFrame, None]:
-        """
-        Método privado para carregar os dados. É chamado pelo __init__.
-        """
         try:
-            print(f"Carregando dados de: {self.filepath}")
+            logging.info(f"Carregando dados de: {self.filepath}")
             df = pd.read_csv(self.filepath)
+            if self.column_name not in df.columns:
+                raise ValueError(f"A coluna '{self.column_name}' não existe no dataset. Colunas disponíveis: {list(df.columns)}")
             df.dropna(subset=[self.column_name], inplace=True)
             df.reset_index(drop=True, inplace=True)
-            print(f"Encontradas {len(df)} linhas válidas para processar.")
+            logging.info(f"Encontradas {len(df)} linhas válidas.")
             return df
-        except FileNotFoundError:
-            print(f"Erro: O arquivo não foi encontrado no caminho especificado: {self.filepath}")
-            return None
-        except KeyError:
-            print(f"Erro: O arquivo CSV deve conter uma coluna chamada '{self.column_name}'.")
-            return None
         except Exception as e:
-            print(f"Um erro inesperado ocorreu ao carregar os dados: {e}")
+            logging.error(f"Erro ao carregar os dados: {e}")
             return None
 
     # --- Métodos Públicos ---
     
     def build_index(self) -> bool:
-        """
-        # MELHORIA: Método público que usa o dataset interno para construir o índice.
-        Não precisa mais receber 'sentences' como parâmetro.
-        """
+        """Gera embeddings e constrói o índice FAISS."""
         if self.dataset is None:
-            print("Dataset não carregado. Abortando a construção do índice.")
+            logging.error("Dataset não carregado. Abortando construção do índice.")
             return False
             
-        print("\nGerando embeddings para os documentos. Isso pode demorar um pouco...")
+        logging.info("Gerando embeddings para os documentos...")
         try:
             sentences = self.dataset[self.column_name].tolist()
-            # CORREÇÃO: Chamando o modelo de embedding a partir de 'self'
-            sentence_embeddings = self.embedding_model.encode(sentences, show_progress_bar=True)
+            sentence_embeddings = self.embedding_model.encode(sentences, batch_size=64, show_progress_bar=True)
             D = sentence_embeddings.shape[1]
-            
-            # CORREÇÃO: Chamando os métodos da própria classe com 'self'
             self._create_index(D)
             self._add_to_index(sentence_embeddings)
-            
-            # CORREÇÃO: Acessando o atributo 'is_trained' corretamente
             return self.obj_faiss.is_trained
         except Exception as e:
-            print(f"Falha ao construir o índice FAISS: {e}")
+            logging.error(f"Falha ao construir o índice FAISS: {e}")
             return False
 
-    def search(self, query: str, k: int = 5):
+    def save_index(self, index_path: str) -> None:
+        if self.obj_faiss is not None:
+            faiss.write_index(self.obj_faiss, index_path)
+            logging.info(f"Índice salvo em: {index_path}")
+        else:
+            logging.warning("Nenhum índice para salvar.")
+
+    def load_index(self, index_path: str) -> None:
+        if os.path.exists(index_path):
+            self.obj_faiss = faiss.read_index(index_path)
+            logging.info(f"Índice carregado de: {index_path}")
+        else:
+            logging.error(f"Arquivo de índice não encontrado em: {index_path}")
+
+    def search(self, query: str, k: int = 5) -> str:
         """
-        # MELHORIA: Método público que realiza a busca e exibe os resultados.
-        Não precisa mais receber o 'dataframe' como parâmetro.
+        Realiza busca semântica e retorna resultados em JSON.
         """
         if self.obj_faiss is None or not self.obj_faiss.is_trained:
-            print("O índice não foi construído. Execute o método build_index() primeiro.")
-            return
+            logging.error("O índice não foi construído. Execute build_index() primeiro.")
+            return json.dumps({"error": "Índice não construído."}, ensure_ascii=False)
 
-        print("\n" + "="*50)
-        print(f"Buscando por textos similares a: \n'{query}'")
-        print("="*50 + "\n")
+        logging.info(f"Buscando por textos similares a: '{query}'")
 
-        # CORREÇÃO: Chamando o modelo e a busca a partir de 'self'
         test_embedding = self.embedding_model.encode([query])
         distances, indices = self._search_index(test_embedding, k=k)
         
+        results = []
         if indices is not None:
-            print(f"Top {k} resultados mais similares:\n")
             for i, idx in enumerate(indices[0]):
                 result_row = self.dataset.iloc[idx]
-                
-                id_chamado = result_row['id_chamado']
-                descricao = result_row['descrição']
-                sugestao = result_row['llm_suggestion']
-                distance = distances[0][i]
+                results.append({
+                    "rank": i+1,
+                    "id_chamado": str(result_row.get("id_chamado", "")),
+                    "descricao": str(result_row.get(self.column_name, "")),
+                    "sugestao": str(result_row.get("llm_suggestion", "")),
+                    "similaridade": float(distances[0][i])
+                })
+        
+        return json.dumps({"query": query, "results": results}, ensure_ascii=False, indent=2)
 
-                print(f"--- Resultado {i+1} ---")
-                print(f"  - ID do Chamado: {id_chamado}")
-                print(f"  - Distância L2: {distance:.4f}")
-                print(f"  - Descrição: '{descricao}'")
-                print(f"  - Sugestão: '{sugestao}'\n")
 
 def main():
-    """
-    Função principal para orquestrar o processo de busca semântica.
-    """
-    # --- Configurações ---
     FILE_PATH = "./results/kmeans/analise_k_means-clusters_using_sentence-embbeding_cluster_using-gemma3:4b_results.csv"
+    INDEX_PATH = "./results/faiss_index.bin"
     TEXT_COLUMN = "descrição"
     K_RESULTS = 5
     TEXTO_DE_TESTE = "Erro ao tentar acessar o sistema de processo judicial eletrônico, a página não carrega."
     
-    # --- Execução do Processo (Agora muito mais simples) ---
-    
-    # 1. Inicializar o sistema FAISS (que já carrega os dados)
     faiss_system = FAISS(filepath=FILE_PATH, column_name=TEXT_COLUMN)
     
-    # 2. Verificar se os dados foram carregados com sucesso antes de prosseguir
     if faiss_system.dataset is not None:
-        # 3. Construir o índice (o método agora não precisa de parâmetros)
-        index_ready = faiss_system.build_index()
+        if not os.path.exists(INDEX_PATH):
+            index_ready = faiss_system.build_index()
+            if index_ready:
+                faiss_system.save_index(INDEX_PATH)
+        else:
+            faiss_system.load_index(INDEX_PATH)
         
-        # 4. Realizar a busca se o índice estiver pronto
-        if index_ready:
-            # O método de busca também ficou mais simples
-            faiss_system.search(query=TEXTO_DE_TESTE, k=K_RESULTS)
+        json_results = faiss_system.search(query=TEXTO_DE_TESTE, k=K_RESULTS)
+        print(json_results)
+
 
 if __name__=="__main__":
     main()
